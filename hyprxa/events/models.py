@@ -7,9 +7,9 @@ import pydantic
 from pydantic import root_validator
 
 from hyprxa.base.models import ManagerInfo
+from hyprxa.util.context import get_user_identity
 from hyprxa.util.events import set_routing_key
 from hyprxa.util.models import BaseModel, StorageHandlerInfo
-from hyprxa._context import get_username
 
 
 
@@ -20,10 +20,10 @@ class EventDocument:
     routing_key: str
     payload: Dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.utcnow)
-    posted_by: str | None = field(default_factory=get_username)
+    posted_by: str | None = field(default_factory=get_user_identity)
 
     def publish(self) -> Tuple[str, bytes]:
-        return self.routing_key, orjson.dumps(self.payload)
+        return self.routing_key, orjson.dumps(asdict(self))
 
     def __gt__(self, __o: object) -> bool:
         if not isinstance(__o, EventDocument):
@@ -51,9 +51,6 @@ class Event(BaseModel):
     @root_validator
     def _set_routing_key(cls, v: Dict[str, str | None]) -> Dict[str, str]:
         return set_routing_key(v)
-    
-    def publish(self) -> Tuple[str, bytes]:
-        return self.routing_key, orjson.dumps(asdict(self))
 
     def to_document(self) -> EventDocument:
         return EventDocument(
