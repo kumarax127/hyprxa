@@ -6,8 +6,8 @@ from hyprxa.auth.base import BaseAuthenticationBackend
 from hyprxa.auth.models import BaseUser, TokenHandler
 from hyprxa.auth.protocols import AuthenticationClient
 from hyprxa.auth.scopes import requires
-from hyprxa.exceptions import NotConfiguredError
 from hyprxa.settings import HYPRXA_SETTINGS
+from hyprxa._exceptions import NotConfiguredError
 
 
 
@@ -52,13 +52,18 @@ async def is_admin(
 
 async def get_auth_backend(request: Request) -> BaseAuthenticationBackend:
     """Get the authentication backed for the application."""
-    for middleware in request.app.user_middleware:
-        if issubclass(middleware.cls, AuthenticationMiddleware):
-            backend = middleware.options.get("backend")
-            if backend is not None:
-                return backend
+    try:
+        middleware = request.app.authentication_middleware
+        assert issubclass(middleware.cls, AuthenticationMiddleware)
+    except AttributeError as e:
+        raise NotConfiguredError("Application is not an instance of `Hyprxa`.") from e
+    except AssertionError as e:
+        raise NotConfiguredError("Invalid authentication configuration.") from e
     else:
-        raise NotConfiguredError("Authentication middleware not installed.")
+        backend = middleware.options.get("backend")
+        if backend is None:
+            raise NotConfiguredError("Invalid authentication configuration.")
+        return backend
 
 
 async def get_auth_client(
@@ -72,4 +77,4 @@ async def get_token_handler(
     backend: BaseAuthenticationBackend = Depends(get_auth_backend)
 ) -> TokenHandler:
     """Get the token handler for the application."""
-    return backend.client
+    return backend.handler
