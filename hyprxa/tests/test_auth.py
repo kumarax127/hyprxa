@@ -1,29 +1,27 @@
 import pytest
-
 from typing import Tuple, Set
 
 from hyprxa.auth import (
-    BaseAuthenticationBackend,
-    AuthenticationClient,
-    BaseUser,
     on_error,
+    requires, 
+    BaseUser,
+    AuthenticationClient,
+    BaseAuthenticationBackend,
     TokenHandler,
     UserNotFound,
-    requires, 
     AuthError,
 )
 
-from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 from starlette.requests import HTTPConnection, Request
 from starlette.authentication import AuthCredentials, AuthenticationError
 from starlette.middleware.authentication import AuthenticationMiddleware
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi import FastAPI, APIRouter, Depends
 
 class BasicAuthClient(AuthenticationClient):
     "Basic authentication client with hardcoded credentials."
-    def __init__(self, authenticated_users):
+    def __init__(self, authenticated_users: Set):
         self.authenticated_users = authenticated_users
 
     def authenticate(self, username: str, password: str) -> bool:
@@ -48,9 +46,9 @@ class BasicAuth(BaseAuthenticationBackend):
 
         if scheme.lower() != "bearer":
             return 
-
         
         username = self.handler.validate(credentials)
+
         if username is None: 
             return
 
@@ -61,7 +59,6 @@ class BasicAuth(BaseAuthenticationBackend):
 
         return AuthCredentials(user.scopes), user
 
-
 @pytest.fixture(scope="session")
 def token_handler() -> TokenHandler:
     return TokenHandler(key="secret", algorithm="HS256", expire=1800)
@@ -71,7 +68,6 @@ def app(token_handler) -> FastAPI:
     app = FastAPI(title="Test Authentication")
 
     auth_client = BasicAuthClient({"admin", "user"})
-
     auth_backend = BasicAuth(client=auth_client, handler=token_handler)
 
     app.add_middleware(AuthenticationMiddleware, backend=auth_backend, on_error=on_error)
@@ -94,7 +90,6 @@ def app(token_handler) -> FastAPI:
 
     return app
 
-    
 @pytest.fixture(scope="session")
 def test_client(app: FastAPI) -> TestClient:
     with TestClient(app) as client:
@@ -121,32 +116,16 @@ def test_valid_user(test_client: TestClient, token_handler: TokenHandler):
     token = token_handler.issue(claims={"sub": "admin"})
     response = test_client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
-    assert response.json() ==  {'username': 'admin', 'scopes': ['ADMIN', 'authenticated']}
-
+    assert response.json() ==  {'username': 'admin', 'scopes': ['authenticated', "ADMIN"]}
 
 def test_requires_scopes(test_client: TestClient, token_handler: TokenHandler):
     admin_token = token_handler.issue(claims={"sub": "admin"})
     response = test_client.get("/requires_admin_scope", headers={"Authorization": f"Bearer {admin_token}"})
-
     assert response.status_code == 200
-
-    user_token = token_handler.issue(claims={"sub": "user"})
-    response = test_client.get("/requires_admin_scope", headers={"Authorization": f"Bearer {user_token}"})
-
-    assert response.status_code == 403
 
     response = test_client.get("/requires_admin_scope", headers=None) # no headers
     assert response.status_code == 401
 
-
-
-
-    
-
-
-
-
-
-
-
-
+    user_token = token_handler.issue(claims={"sub": "user"})
+    response = test_client.get("/requires_admin_scope", headers={"Authorization": f"Bearer {user_token}"})
+    assert response.status_code == 403
