@@ -3,7 +3,7 @@ from typing import Tuple, Set
 
 from hyprxa.auth import (
     on_error,
-    requires, 
+    requires,
     BaseUser,
     AuthenticationClient,
     BaseAuthenticationBackend,
@@ -32,24 +32,24 @@ class BasicAuthClient(AuthenticationClient):
             scopes = {"authenticated"} if username != "admin" else {"authenticated", "ADMIN"}
             return BaseUser(username=username, scopes=scopes)
         raise UserNotFound(username)
-    
-class BasicAuth(BaseAuthenticationBackend): 
+
+class BasicAuth(BaseAuthenticationBackend):
     async def authenticate(self, conn: HTTPConnection) -> Tuple[AuthCredentials, BaseUser] | None:
         if "Authorization" not in conn.headers:
             return None
 
         auth = conn.headers.get("Authorization")
-        if auth is None: 
-            return 
+        if auth is None:
+            return
 
         scheme, credentials = auth.split()
 
         if scheme.lower() != "bearer":
-            return 
-        
+            return
+
         username = self.handler.validate(credentials)
 
-        if username is None: 
+        if username is None:
             return
 
         try:
@@ -76,7 +76,7 @@ def app(token_handler) -> FastAPI:
 
     @router.get("/whoami")
     def whoami(request: Request) -> dict:
-        return {"username": request.user.username, "scopes": request.user.scopes}
+        return {"username": request.user.username, "scopes": sorted(list(request.user.scopes))}
 
     @router.get("/is_authenticated", response_model=bool)
     def is_authenticated(request: Request) -> bool:
@@ -85,7 +85,7 @@ def app(token_handler) -> FastAPI:
     @router.get("/requires_admin_scope", response_model=BaseUser)
     def requires_admin(request: Request, user: BaseUser = Depends(requires(["ADMIN"]))) -> BaseUser:
         return user.dict()
-    
+
     app.include_router(router)
 
     return app
@@ -116,7 +116,7 @@ def test_valid_user(test_client: TestClient, token_handler: TokenHandler):
     token = token_handler.issue(claims={"sub": "admin"})
     response = test_client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
-    assert response.json() ==  {'username': 'admin', 'scopes': ['authenticated', "ADMIN"]}
+    assert response.json() ==  {'username': 'admin', 'scopes': ["ADMIN", "authenticated"]}
 
 def test_requires_scopes(test_client: TestClient, token_handler: TokenHandler):
     admin_token = token_handler.issue(claims={"sub": "admin"})
